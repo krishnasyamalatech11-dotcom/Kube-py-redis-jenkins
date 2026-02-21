@@ -1,34 +1,49 @@
 pipeline {
   agent { label 'docker' }
+
   triggers {
     pollSCM('H/2 * * * *')
-}
-environment {
-        APP_ENV   = 'uat'
-    }
+  }
+
+  environment {
+    APP_ENV = 'uat'
+  }
+
   stages {
+
     stage('Checkout Code') {
       steps {
         checkout scm
       }
     }
+
     stage('Kube testing') {
       steps {
-        sh "kubectl get pods "
+        sh "kubectl get pods"
       }
-}
-stage('deploy kube') {
+    }
+
+    stage('deploy kube') {
       steps {
-	      sh "kubectl apply -f ."
+        sh "kubectl apply -f ."
         sh "kubectl get pods"
         sh "kubectl get deployment"
         sh "kubectl get svc"
       }
-}
-stage('Testing deployment') {
+    }
+
+    // ✅ SIMPLE FIX
+    stage('Wait') {
       steps {
-	    sh "curl 192.168.49.2:30110"
+        sh "sleep 60"
       }
-}
+    }
+
+    stage('Testing deployment') {
+      steps {
+        sh "curl 192.168.49.2:30110"
+      }
+    }
+
   }
 }

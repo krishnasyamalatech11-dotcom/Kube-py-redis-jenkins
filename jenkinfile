@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    IMAGE = 'krishtech11/python-app:latest'
+    IMAGE = 'krishtech11/python-app:feb28'
   }
 
   stages {

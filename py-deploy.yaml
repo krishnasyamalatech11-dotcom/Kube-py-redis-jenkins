@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: python
-          image: krishtech11/python-app:latest
+          image: krishtech11/python-app:feb28
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

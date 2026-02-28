@@ -6,10 +6,16 @@ pipeline {
   }
 
   stages {
-
     stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Docker Login') {
       steps {
-        checkout scm
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          sh 'docker logout || true'
+          sh 'echo $PASS | docker login -u $USER --password-stdin'
+        }
       }
     }
 
@@ -23,18 +29,20 @@ pipeline {
 
     stage('Push') {
       steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-          sh 'echo $PASS | docker login -u $USER --password-stdin'
-          sh 'docker push $IMAGE'
-        }
+        sh 'docker push $IMAGE'
+        sh 'docker logout || true'
       }
     }
 
     stage('Deploy') {
-      steps {
-        sh 'kubectl apply -f py-deploy.yaml'
-      }
+      steps { sh 'kubectl apply -f py-deploy.yaml' }
     }
 
+    stage('Test') {
+      steps {
+        sh 'sleep 30'
+        sh 'curl 192.168.49.2:30110'
+      }
+    }
   }
 }

@@ -2,7 +2,7 @@ pipeline {
   agent { label 'docker' }
 
   environment {
-    IMAGE = 'krishtech11/python-app:feb28'
+    IMAGE = 'krishtech11/python-app:$BUILD_NUMBER'
   }
 
   stages {
@@ -33,11 +33,15 @@ pipeline {
         sh 'docker logout || true'
       }
     }
-
-    stage('Deploy') {
-      steps { sh 'kubectl apply -f py-deploy.yaml' }
+    stage('Deploy - Template and Apply') {
+        steps {
+            sh '''
+            export IMAGE_TAG=$BUILD_NUMBER
+            envsubst < py-deploy.yaml | kubectl apply -f -
+            kubectl rollout status deployment/py-deploy
+            '''
+        }
     }
-
     stage('Test') {
       steps {
         sh 'sleep 30'

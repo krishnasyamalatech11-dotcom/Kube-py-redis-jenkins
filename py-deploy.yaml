@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: python
-          image: krishtech11/python-app:feb28
+          image: krishtech11/python-app:${IMAGE_TAG}
           imagePullPolicy: Always
           ports:
             - containerPort: 8000

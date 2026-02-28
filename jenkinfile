@@ -2,7 +2,7 @@ pipeline {
   agent { label 'docker' }
 
   environment {
-    IMAGE = 'krishtech11/python-app:$BUILD_NUMBER'
+    IMAGE = "krishtech11/python-app:${BUILD_NUMBER}"
   }
 
   stages {

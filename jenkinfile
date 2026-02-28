@@ -1,47 +1,38 @@
 pipeline {
-  agent { label 'docker' }
-
-  triggers {
-    pollSCM('H/2 * * * *')
-  }
+  agent any
 
   environment {
-    APP_ENV = 'uat'
+    IMAGE = 'krishtech11/python-app:latest'
   }
 
   stages {
 
-    stage('Checkout Code') {
+    stage('Checkout') {
       steps {
         checkout scm
       }
     }
 
-    stage('Kube testing') {
+    stage('Build') {
       steps {
-        sh "kubectl get pods"
+        dir('python-sample-code') {
+          sh 'docker build -t $IMAGE .'
+        }
       }
     }
 
-    stage('deploy kube') {
+    stage('Push') {
       steps {
-        sh "kubectl apply -f ."
-        sh "kubectl get pods"
-        sh "kubectl get deployment"
-        sh "kubectl get svc"
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          sh 'echo $PASS | docker login -u $USER --password-stdin'
+          sh 'docker push $IMAGE'
+        }
       }
     }
 
-    // ✅ SIMPLE FIX
-    stage('Wait') {
+    stage('Deploy') {
       steps {
-        sh "sleep 60"
-      }
-    }
-
-    stage('Testing deployment') {
-      steps {
-        sh "curl 192.168.49.2:30110"
+        sh 'kubectl apply -f py-deploy.yaml'
       }
     }
 

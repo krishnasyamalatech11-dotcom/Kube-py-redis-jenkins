@@ -18,8 +18,9 @@ spec:
         app: python-app
     spec:
       containers:
-        - name: python-container
-          image: krishtech11/py-feb26:v1
+        - name: python
+          image: krishtech11/python-app:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8000
           envFrom:

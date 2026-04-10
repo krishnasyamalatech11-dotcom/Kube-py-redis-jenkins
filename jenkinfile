@@ -34,6 +34,7 @@ pipeline {
       }
     }
     stage('Deploy - Template and Apply') {
+      agent { label 'kubernetes' }
         steps {
             sh '''
             export IMAGE_TAG=$BUILD_NUMBER
@@ -45,7 +46,7 @@ pipeline {
     stage('Test') {
       steps {
         sh 'sleep 30'
-        sh 'curl 192.168.49.2:30110'
+        sh 'curl 98.88.107.209:30110'
       }
     }
   }

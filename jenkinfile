@@ -38,6 +38,7 @@ pipeline {
         steps {
             sh '''
             export IMAGE_TAG=$BUILD_NUMBER
+            kubectl apply -f .
             envsubst < py-deploy.yaml | kubectl apply -f -
             kubectl rollout status deployment/py-deploy
             '''

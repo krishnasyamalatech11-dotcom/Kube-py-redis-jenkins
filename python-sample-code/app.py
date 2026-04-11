@@ -5,18 +5,10 @@ from redis import Redis
 
 app = Flask(__name__)
 
-# Read Redis host from environment variable
 redis_host = os.getenv("REDIS_HOST", "redis-service")
-redis_port = 6379
-
-# Create Redis client
-redis_client = Redis(host=redis_host, port=redis_port, decode_responses=True)
+redis_client = Redis(host=redis_host, port=6379, decode_responses=True)
 
 def increment_hit_count():
-    """
-    Retry Redis connection a few times before giving up.
-    This helps when Redis starts a little later than the app.
-    """
     for attempt in range(10):
         try:
             return redis_client.incr("hits")
@@ -28,10 +20,8 @@ def increment_hit_count():
 @app.route("/")
 def hello():
     count = increment_hit_count()
-
     if count is None:
         return "Redis is not ready yet. Please try again in a few seconds.\n", 503
-
     return f"Hello World! I have been seen {count} times updated again\n"
 
 @app.route("/health")

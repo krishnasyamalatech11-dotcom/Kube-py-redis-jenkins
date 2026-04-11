@@ -55,22 +55,42 @@ pipeline {
                 sh '''
                     export IMAGE_TAG=${IMAGE_TAG}
 
-                    # Apply base manifests first
+                    echo "Applying Kubernetes manifests..."
                     kubectl apply -f configmap.yaml
                     kubectl apply -f redis-deploy.yaml
                     kubectl apply -f redis-service.yaml
-
-                    # Apply python deployment with envsubst
                     envsubst < py-deploy.yaml | kubectl apply -f -
-
-                    # Apply python service
                     kubectl apply -f py-service.yaml
 
-                    # Wait for Redis deployment
+                    echo "Waiting for Redis deployment rollout..."
                     kubectl rollout status deployment/redis-deploy --timeout=180s
 
-                    # Wait for Python deployment
-                    kubectl rollout status deployment/py-deploy --timeout=180s
+                    echo "Waiting for Python deployment rollout..."
+                    if ! kubectl rollout status deployment/py-deploy --timeout=300s; then
+                        echo "Python deployment rollout failed. Collecting debug details..."
+                        kubectl get pods -o wide
+                        echo "----------------------------------------"
+                        kubectl describe deployment py-deploy || true
+                        echo "----------------------------------------"
+                        kubectl get rs || true
+                        echo "----------------------------------------"
+                        kubectl get pods -l app=python-app -o wide || true
+                        echo "----------------------------------------"
+                        for p in $(kubectl get pods -l app=python-app -o jsonpath='{.items[*].metadata.name}'); do
+                            echo "===== DESCRIBE POD: $p ====="
+                            kubectl describe pod "$p" || true
+                            echo "===== LOGS: $p ====="
+                            kubectl logs "$p" || true
+                            echo "===== INIT CONTAINER LOGS: $p ====="
+                            kubectl logs "$p" -c wait-for-redis || true
+                            echo "----------------------------------------"
+                        done
+                        exit 1
+                    fi
+
+                    echo "Deployments rolled out successfully."
+                    kubectl get pods -o wide
+                    kubectl get svc
                 '''
             }
         }
@@ -82,7 +102,7 @@ pipeline {
                     echo "Testing application on NodePort..."
 
                     for i in $(seq 1 12); do
-                        STATUS=$(curl -s -o /tmp/app_output.txt -w "%{http_code}" http://98.88.107.209:30110 || true)
+                        STATUS=$(curl -s --connect-timeout 5 --max-time 10 -o /tmp/app_output.txt -w "%{http_code}" http://98.88.107.209:30110 || true)
 
                         if [ "$STATUS" = "200" ]; then
                             echo "Application is healthy"
@@ -97,6 +117,8 @@ pipeline {
                     done
 
                     echo "Application test failed after multiple attempts"
+                    kubectl get pods -o wide || true
+                    kubectl get svc || true
                     exit 1
                 '''
             }

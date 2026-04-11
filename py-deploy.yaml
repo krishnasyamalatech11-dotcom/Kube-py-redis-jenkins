@@ -28,10 +28,7 @@ spec:
                 echo "Waiting for redis-service DNS..."
                 sleep 2
               done
-              until nc -z redis-service 6379; do
-                echo "Waiting for Redis port 6379..."
-                sleep 2
-              done
+              echo "Redis DNS resolved"
 
       containers:
         - name: python
@@ -53,15 +50,15 @@ spec:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            timeoutSeconds: 2
-            failureThreshold: 5
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 10
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
-            initialDelaySeconds: 20
-            periodSeconds: 10
-            timeoutSeconds: 2
-            failureThreshold: 5
+            initialDelaySeconds: 40
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 10

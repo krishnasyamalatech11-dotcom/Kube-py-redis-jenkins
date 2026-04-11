@@ -1,54 +1,117 @@
 pipeline {
-  agent { label 'docker' }
+    agent none
 
-  environment {
-    IMAGE = "krishtech11/python-app:${BUILD_NUMBER}"
-  }
-
-  stages {
-    stage('Checkout') {
-      steps { checkout scm }
+    environment {
+        IMAGE_NAME = "krishtech11/python-app"
+        IMAGE_TAG  = "${BUILD_NUMBER}"
     }
 
-    stage('Docker Login') {
-      steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-          sh 'docker logout || true'
-          sh 'echo $PASS | docker login -u $USER --password-stdin'
+    stages {
+
+        stage('Checkout') {
+            agent { label 'docker' }
+            steps {
+                checkout scm
+            }
         }
-      }
+
+        stage('Docker Login') {
+            agent { label 'docker' }
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    sh '''
+                        docker logout || true
+                        echo "$PASS" | docker login -u "$USER" --password-stdin
+                    '''
+                }
+            }
+        }
+
+        stage('Build') {
+            agent { label 'docker' }
+            steps {
+                dir('python-sample-code') {
+                    sh '''
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    '''
+                }
+            }
+        }
+
+        stage('Push') {
+            agent { label 'docker' }
+            steps {
+                sh '''
+                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                    docker logout || true
+                '''
+            }
+        }
+
+        stage('Deploy - Apply Kubernetes Files') {
+            agent { label 'Kube-Master' }
+            steps {
+                checkout scm
+                sh '''
+                    export IMAGE_TAG=${IMAGE_TAG}
+
+                    # Apply base manifests first
+                    kubectl apply -f configmap.yaml
+                    kubectl apply -f redis-deploy.yaml
+                    kubectl apply -f redis-service.yaml
+
+                    # Apply python deployment with envsubst
+                    envsubst < py-deploy.yaml | kubectl apply -f -
+
+                    # Apply python service
+                    kubectl apply -f py-service.yaml
+
+                    # Wait for Redis deployment
+                    kubectl rollout status deployment/redis-deploy --timeout=180s
+
+                    # Wait for Python deployment
+                    kubectl rollout status deployment/py-deploy --timeout=180s
+                '''
+            }
+        }
+
+        stage('Test') {
+            agent { label 'Kube-Master' }
+            steps {
+                sh '''
+                    echo "Testing application on NodePort..."
+
+                    for i in $(seq 1 12); do
+                        STATUS=$(curl -s -o /tmp/app_output.txt -w "%{http_code}" http://98.88.107.209:30110 || true)
+
+                        if [ "$STATUS" = "200" ]; then
+                            echo "Application is healthy"
+                            cat /tmp/app_output.txt
+                            exit 0
+                        fi
+
+                        echo "Attempt $i failed with status $STATUS"
+                        cat /tmp/app_output.txt || true
+                        echo "Retrying in 10 seconds..."
+                        sleep 10
+                    done
+
+                    echo "Application test failed after multiple attempts"
+                    exit 1
+                '''
+            }
+        }
     }
 
-    stage('Build') {
-      steps {
-        dir('python-sample-code') {
-          sh 'docker build -t $IMAGE .'
+    post {
+        always {
+            echo 'Pipeline execution completed.'
         }
-      }
-    }
-
-    stage('Push') {
-      steps {
-        sh 'docker push $IMAGE'
-        sh 'docker logout || true'
-      }
-    }
-    stage('Deploy - Template and Apply') {
-      agent { label 'kubernetes' }
-        steps {
-            sh '''
-            export IMAGE_TAG=$BUILD_NUMBER
-            kubectl apply -f .
-            envsubst < py-deploy.yaml | kubectl apply -f -
-            kubectl rollout status deployment/py-deploy
-            '''
+        success {
+            echo 'Application built, pushed, deployed, and tested successfully.'
+        }
+        failure {
+            echo 'Pipeline failed. Check logs for details.'
         }
     }
-    stage('Test') {
-      steps {
-        sh 'sleep 30'
-        sh 'curl 98.88.107.209:30110'
-      }
-    }
-  }
 }

@@ -1,0 +1,54 @@
+pipeline {
+  agent { label 'docker' }
+
+  environment {
+    IMAGE = "krishtech11/python-app:${BUILD_NUMBER}"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Docker Login') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          sh 'docker logout || true'
+          sh 'echo $PASS | docker login -u $USER --password-stdin'
+        }
+      }
+    }
+
+    stage('Build') {
+      steps {
+        dir('python-sample-code') {
+          sh 'docker build -t $IMAGE .'
+        }
+      }
+    }
+
+    stage('Push') {
+      steps {
+        sh 'docker push $IMAGE'
+        sh 'docker logout || true'
+      }
+    }
+    stage('Deploy - Template and Apply') {
+      agent { label 'kubernetes' }
+        steps {
+            sh '''
+            export IMAGE_TAG=$BUILD_NUMBER
+            kubectl apply -f .
+            envsubst < py-deploy.yaml | kubectl apply -f -
+            kubectl rollout status deployment/py-deploy
+            '''
+        }
+    }
+    stage('Test') {
+      steps {
+        sh 'sleep 30'
+        sh 'curl 98.88.107.209:30110'
+      }
+    }
+  }
+}

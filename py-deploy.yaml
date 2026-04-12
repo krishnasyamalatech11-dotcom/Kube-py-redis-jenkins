@@ -17,19 +17,6 @@ spec:
       labels:
         app: python-app
     spec:
-      initContainers:
-        - name: wait-for-redis
-          image: busybox:1.36
-          command:
-            - sh
-            - -c
-            - |
-              until nslookup redis-service; do
-                echo "Waiting for redis-service DNS..."
-                sleep 2
-              done
-              echo "Redis DNS resolved"
-
       containers:
         - name: python
           image: krishtech11/python-app:${IMAGE_TAG}
@@ -46,19 +33,4 @@ spec:
             limits:
               cpu: "500m"
               memory: "256Mi"
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 20
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 40
-            periodSeconds: 15
-            timeoutSeconds: 5
-            failureThreshold: 10
+

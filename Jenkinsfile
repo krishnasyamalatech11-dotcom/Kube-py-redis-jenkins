@@ -28,12 +28,12 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            steps {
-                sh '''
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} aapp1
-                '''
-            }
-        }
+    steps {
+        sh '''
+            docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+        '''
+    }
+}
 
         // stage('Trivy Image Scan') {
         //     steps {

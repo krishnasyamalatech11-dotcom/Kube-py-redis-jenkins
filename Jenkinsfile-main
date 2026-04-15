@@ -6,14 +6,20 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME = "krishtech11/python-app"
-        IMAGE_TAG  = "${BUILD_NUMBER}"
-        Host_IP    = "98.88.107.209"
-        Host_Port  = "30110"
-        hub_cred   = "dockerhub-creds"
+        IMAGE_NAME  = "krishtech11/python-app"
+        IMAGE_TAG   = "${BUILD_NUMBER}"
+        Host_IP     = "98.88.107.209"
+        Host_Port   = "30110"
+        hub_cred    = "dockerhub-creds"
+        SONAR_TOKEN = credentials('sonar-token')
+    }
+
+    tools {
+        sonarScanner 'sonar-scanner'
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -27,13 +33,36 @@ pipeline {
             }
         }
 
+        stage('SonarCloud Analysis') {
+            steps {
+                withSonarQubeEnv('SonarCloud') {
+                    sh '''
+                        sonar-scanner \
+                          -Dsonar.projectKey=krishnasyamalatech11-dotcom_Kube-py-redis-jenkins \
+                          -Dsonar.organization=krishnasyamalatech11-dotcom \
+                          -Dsonar.sources=. \
+                          -Dsonar.host.url=https://sonarcloud.io \
+                          -Dsonar.login=$SONAR_TOKEN
+                    '''
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
         stage('Build Docker Image') {
-    steps {
-        sh '''
-            docker build -t ${IMAGE_NAME}:${IMAGE_TAG} python-sample-code
-        '''
-    }
-}
+            steps {
+                sh '''
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} python-sample-code
+                '''
+            }
+        }
 
         // stage('Trivy Image Scan') {
         //     steps {

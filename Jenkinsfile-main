@@ -1,9 +1,9 @@
 pipeline {
     agent { label 'docker' }
 
-    triggers {
-        pollSCM('H/2 * * * *')
-    }
+    //triggers {
+      //  pollSCM('H/2 * * * *')
+    //}
 
     environment {
         IMAGE_NAME  = "krishtech11/python-app"
@@ -11,7 +11,7 @@ pipeline {
         Host_IP     = "98.88.107.209"
         Host_Port   = "30110"
         hub_cred    = "dockerhub-creds"
-        SONAR_TOKEN = credentials('sonar-token')
+        SONAR_TOKEN = credentials('git n')
     }
 
     tools {

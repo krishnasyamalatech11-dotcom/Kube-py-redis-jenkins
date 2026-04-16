@@ -1,19 +1,13 @@
 pipeline {
     agent { label 'docker' }
 
-    // triggers {
-    //     pollSCM('H/2 * * * *')   // Poll Git every 2 minutes
-    // }
-
     environment {
-        APP_ENV    = 'uat'
-        IMAGE_NAME = 'krishtech11/python-app'
+        APP_ENV     = 'uat'
+        IMAGE_NAME  = 'krishtech11/python-app'
         SONAR_TOKEN = credentials('sonar-token')
+        SCANNER_BIN = '/opt/sonar-scanner/bin/sonar-scanner'
     }
-    //  tools {
-    //      sonarRunner 'sonar-scanner'
-    //  }
- 
+
     stages {
 
         stage('Checkout Code') {
@@ -30,17 +24,28 @@ pipeline {
                 sh 'ls -la'
             }
         }
-        
-         stage('SonarCloud Analysis') {
+
+        stage('Check Sonar Scanner') {
+            steps {
+                sh '''
+                    echo "PATH=$PATH"
+                    which sonar-scanner || true
+                    ls -l ${SCANNER_BIN} || true
+                    ${SCANNER_BIN} -v
+                '''
+            }
+        }
+
+        stage('SonarCloud Analysis') {
             steps {
                 withSonarQubeEnv('SonarCloud') {
                     sh '''
-                    sonar-scanner \
-                      -Dsonar.projectKey=krishnasyamalatech11-dotcom_Kube-py-redis-jenkins \
-                      -Dsonar.organization=krishnasyamalatech11-dotcom \
-                      -Dsonar.sources=. \
-                      -Dsonar.host.url=https://sonarcloud.io \
-                      -Dsonar.login=$SONAR_TOKEN
+                        ${SCANNER_BIN} \
+                          -Dsonar.projectKey=krishnasyamalatech11-dotcom_Kube-py-redis-jenkins \
+                          -Dsonar.organization=krishnasyamalatech11-dotcom \
+                          -Dsonar.sources=. \
+                          -Dsonar.host.url=https://sonarcloud.io \
+                          -Dsonar.token=$SONAR_TOKEN
                     '''
                 }
             }
@@ -85,37 +90,31 @@ pipeline {
 
         stage('Kube Testing') {
             agent { label 'kubernetes' }
-
             steps {
                 echo "Checking Kubernetes pods..."
                 sh 'kubectl get pods'
             }
         }
+
         stage('Deploy - Template and Apply') {
-             agent { label 'kubernetes' }
-
-
-        steps {
+            agent { label 'kubernetes' }
+            steps {
                 sh '''
-        export IMAGE_TAG=${BUILD_NUMBER}
-
-        envsubst < configmap.yaml | kubectl apply -f -
-        kubectl apply -f redis-deploy.yaml
-        kubectl apply -f redis-service.yaml
-        envsubst < py-deploy.yaml | kubectl apply -f -
-        kubectl apply -f py-service.yaml
-
-        kubectl rollout status deployment/py-deploy
-        '''
+                    export IMAGE_TAG=${BUILD_NUMBER}
+                    envsubst < configmap.yaml | kubectl apply -f -
+                    kubectl apply -f redis-deploy.yaml
+                    kubectl apply -f redis-service.yaml
+                    envsubst < py-deploy.yaml | kubectl apply -f -
+                    kubectl apply -f py-service.yaml
+                    kubectl rollout status deployment/py-deploy
+                '''
+            }
         }
-    }
 
         stage('Deploy to Kubernetes') {
-             agent { label 'kubernetes' }
-
+            agent { label 'kubernetes' }
             steps {
                 echo "Deploying to Kubernetes..."
-           
                 sh 'kubectl get pods'
                 sh 'kubectl get deployment'
                 sh 'kubectl get svc'

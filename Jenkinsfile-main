@@ -14,9 +14,9 @@ pipeline {
         SONAR_TOKEN = credentials('git n')
     }
 
-    // tools {
-    //     sonarScanner 'sonar-scanner'
-    // }
+    tools {
+        sonarScanner 'sonar-scanner'
+    }
 
     stages {
 

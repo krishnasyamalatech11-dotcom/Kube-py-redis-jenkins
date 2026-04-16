@@ -1,57 +1,50 @@
 pipeline {
     agent { label 'docker' }
 
-    //triggers {
-      //  pollSCM('H/2 * * * *')
-    //}
-
-    environment {
-    IMAGE_NAME  = "krishtech11/python-app"
-    IMAGE_TAG   = "${BUILD_NUMBER}"
-    Host_IP     = "98.88.107.209"
-    Host_Port   = "30110"
-    hub_cred    = "dockerhub-creds"
-    SONAR_TOKEN = credentials('sonar-token')
-    SCANNER_BIN = "/opt/sonar-scanner/bin/sonar-scanner"
-}
-
-    // tools {
-    //     sonarScanner 'sonar-scanner'
+    // triggers {
+    //     pollSCM('H/2 * * * *')   // Poll Git every 2 minutes
     // }
 
+    environment {
+        APP_ENV    = 'uat'
+        IMAGE_NAME = 'krishtech11/python-app'
+        SONAR_TOKEN = credentials('sonar-token')
+    }
+    //  tools {
+    //      sonarRunner 'sonar-scanner'
+    //  }
+ 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
+                echo "Checking out source code..."
                 checkout scm
             }
         }
 
-        stage('Check the docker cli') {
-    steps {
-        sh '''
-            docker --version
-            docker ps -a
-            ls -l ${SCANNER_BIN}
-            ${SCANNER_BIN} -v
-        '''
-    }
-}
-
-        stage('SonarCloud Analysis') {
-    steps {
-        withSonarQubeEnv('SonarCloud') {
-            sh '''
-                ${SCANNER_BIN} \
-                  -Dsonar.projectKey=krishnasyamalatech11-dotcom_Kube-py-redis-jenkins \
-                  -Dsonar.organization=krishnasyamalatech11-dotcom \
-                  -Dsonar.sources=. \
-                  -Dsonar.host.url=https://sonarcloud.io \
-                  -Dsonar.token=$SONAR_TOKEN
-            '''
+        stage('Debug Workspace') {
+            steps {
+                echo "Listing files in workspace..."
+                sh 'pwd'
+                sh 'ls -la'
+            }
         }
-    }
-}
+        
+         stage('SonarCloud Analysis') {
+            steps {
+                withSonarQubeEnv('SonarCloud') {
+                    sh '''
+                    sonar-scanner \
+                      -Dsonar.projectKey=beniko123_kubernetes-python-redis \
+                      -Dsonar.organization=beniko123 \
+                      -Dsonar.sources=. \
+                      -Dsonar.host.url=https://sonarcloud.io \
+                      -Dsonar.login=$SONAR_TOKEN
+                    '''
+                }
+            }
+        }
 
         stage('Quality Gate') {
             steps {
@@ -61,74 +54,78 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Docker Login') {
             steps {
-                sh '''
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} python-sample-code
-                '''
-            }
-        }
-
-        // stage('Trivy Image Scan') {
-        //     steps {
-        //         sh '''
-        //             trivy image \
-        //               --severity HIGH,CRITICAL \
-        //               --exit-code 1 \
-        //               ${IMAGE_NAME}:${IMAGE_TAG}
-        //         '''
-        //     }
-        // }
-
-        stage('Push Docker Image') {
-            steps {
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: "${hub_cred}",
-                        usernameVariable: 'DOCKERHUB_USER',
-                        passwordVariable: 'DOCKERHUB_PASS'
-                    )
-                ]) {
+                echo 'Logging into Docker Hub...'
+                withCredentials([usernamePassword(
+                    credentialsId: 'docke-repo-cred',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
                     sh '''
-                        echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
-                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                        docker logout
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
                     '''
                 }
             }
         }
 
+        stage('Docker Build') {
+            steps {
+                echo "Building Docker image..."
+                sh "docker build -t ${IMAGE_NAME}:$BUILD_NUMBER python-sample-code"
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                echo "Pushing Docker image..."
+                sh "docker push ${IMAGE_NAME}:$BUILD_NUMBER"
+            }
+        }
+
+        stage('Kube Testing') {
+            agent { label 'kubernetes' }
+
+            steps {
+                echo "Checking Kubernetes pods..."
+                sh 'kubectl get pods'
+            }
+        }
         stage('Deploy - Template and Apply') {
-            agent { label 'kubernetes' }
+             agent { label 'kubernetes' }
+
+
+        steps {
+                sh '''
+        export IMAGE_TAG=${BUILD_NUMBER}
+
+        envsubst < configmap.yaml | kubectl apply -f -
+        kubectl apply -f redis-deploy.yaml
+        kubectl apply -f redis-service.yaml
+        envsubst < py-deploy.yaml | kubectl apply -f -
+        kubectl apply -f py-service.yaml
+
+        kubectl rollout status deployment/py-deploy
+        '''
+        }
+    }
+
+        stage('Deploy to Kubernetes') {
+             agent { label 'kubernetes' }
 
             steps {
-                sh '''
-                    kubectl apply -f .
-                    export IMAGE_TAG=$BUILD_NUMBER
-                    envsubst < py-deploy.yaml | kubectl apply -f -
-                    kubectl rollout status deployment/py-deploy
-                '''
+                echo "Deploying to Kubernetes..."
+           
+                sh 'kubectl get pods'
+                sh 'kubectl get deployment'
+                sh 'kubectl get svc'
             }
         }
 
-        stage('Check on Kubernetes') {
-            agent { label 'kubernetes' }
-
+        stage('Test Deployment') {
             steps {
-                sh '''
-                    kubectl get pods
-                    kubectl get svc
-                    kubectl get deployments
-                '''
-            }
-        }
-
-        stage('Application Health Check') {
-            steps {
-                sh '''
-                    sleep 10
-                    curl http://${Host_IP}:${Host_Port}
-                '''
+                echo "Testing deployment..."
+                sh 'curl 98.88.107.209:30110'
             }
         }
     }

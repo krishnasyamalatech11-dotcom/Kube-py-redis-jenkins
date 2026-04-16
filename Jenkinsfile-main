@@ -11,12 +11,13 @@ pipeline {
         Host_IP     = "98.88.107.209"
         Host_Port   = "30110"
         hub_cred    = "dockerhub-creds"
-        SONAR_TOKEN = credentials('git n')
+        SONAR_TOKEN = credentials('sonar-token')
+        SCANNER_HOME = "/opt/sonar-scanner/bin"
     }
 
-    tools {
-        sonarScanner 'sonar-scanner'
-    }
+    // tools {
+    //     sonarScanner 'sonar-scanner'
+    // }
 
     stages {
 

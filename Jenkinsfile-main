@@ -1,0 +1,138 @@
+pipeline {
+    agent { label 'docker' }
+
+    environment {
+        APP_ENV     = 'uat'
+        IMAGE_NAME  = 'krishtech11/python-app'
+        SONAR_TOKEN = credentials('sonar-token')
+        SCANNER_BIN = '/opt/sonar-scanner/bin/sonar-scanner'
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                echo "Checking out source code..."
+                checkout scm
+            }
+        }
+
+        stage('Debug Workspace') {
+            steps {
+                echo "Listing files in workspace..."
+                sh 'pwd'
+                sh 'ls -la'
+            }
+        }
+
+        stage('Check Sonar Scanner') {
+            steps {
+                sh '''
+                    echo "PATH=$PATH"
+                    which sonar-scanner || true
+                    ls -l ${SCANNER_BIN} || true
+                    ${SCANNER_BIN} -v
+                '''
+            }
+        }
+
+        stage('SonarCloud Analysis') {
+            steps {
+                withSonarQubeEnv('SonarCloud') {
+                    sh '''
+                        ${SCANNER_BIN} \
+                          -Dsonar.projectKey=krishnasyamalatech11-dotcom_Kube-py-redis-jenkins \
+                          -Dsonar.organization=krishnasyamalatech11-dotcom \
+                          -Dsonar.sources=. \
+                          -Dsonar.host.url=https://sonarcloud.io \
+                          -Dsonar.token=$SONAR_TOKEN
+                    '''
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('Docker Login') {
+            steps {
+                echo 'Logging into Docker Hub...'
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    '''
+                }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                echo "Building Docker image..."
+                sh "docker build -t ${IMAGE_NAME}:$BUILD_NUMBER python-sample-code"
+            }
+        }
+        stage('Trivy Image Scan') {
+             steps {
+        sh '''
+            trivy image --severity HIGH,CRITICAL --exit-code 1 ${IMAGE_NAME}:${BUILD_NUMBER}
+        '''
+    }
+}
+
+        stage('Docker Push') {
+            steps {
+                echo "Pushing Docker image..."
+                sh "docker push ${IMAGE_NAME}:$BUILD_NUMBER"
+            }
+        }
+        
+        stage('Kube Testing') {
+            agent { label 'kubernetes' }
+            steps {
+                echo "Checking Kubernetes pods..."
+                sh 'kubectl get pods'
+            }
+        }
+
+        stage('Deploy - Template and Apply') {
+            agent { label 'kubernetes' }
+            steps {
+                sh '''
+                    export IMAGE_TAG=${BUILD_NUMBER}
+                    envsubst < configmap.yaml | kubectl apply -f -
+                    kubectl apply -f redis-deploy.yaml
+                    kubectl apply -f redis-service.yaml
+                    envsubst < py-deploy.yaml | kubectl apply -f -
+                    kubectl apply -f py-service.yaml
+                    kubectl rollout status deployment/py-deploy
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            agent { label 'kubernetes' }
+            steps {
+                echo "Deploying to Kubernetes..."
+                sh 'kubectl get pods'
+                sh 'kubectl get deployment'
+                sh 'kubectl get svc'
+            }
+        }
+
+        stage('Test Deployment') {
+            steps {
+                echo "Testing deployment..."
+                sh 'curl 98.88.107.209:30110'
+            }
+        }
+    }
+}
